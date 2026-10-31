@@ -31,18 +31,14 @@ def main():
     create_sample_image(input_path)
     print("\nTRACE-X | ELA COMPARISON")
     print("-" * 40)
-
     for quality in [95, 90, 70]:
-
         output_path = root / "results" / f"ela_{quality}.png"
-
         result = analyze_ela(
             input_path,
             output_path,
             quality=quality,
             scale=10
         )
-
         print(f"\nJPEG Quality: {quality}")
         print(f"Mean Difference: {result['mean_difference']:.4f}")
         print(f"Maximum Difference: {result['max_difference']:.4f}")
