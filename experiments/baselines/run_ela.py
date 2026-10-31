@@ -29,15 +29,23 @@ def main():
     input_path = root / "data" / "processed" / "ela_sample.jpg"
     output_path = root / "results" / "ela_sample.png"
     create_sample_image(input_path)
-    result = analyze_ela(
-        input_path,
-        output_path,
-        quality=90,
-        scale=10
-    )
-    print("\nTRACE-X | ELA RESULTS")
-    print("-" * 35)
-    for key, value in result.items():
-        print(f"{key}: {value}")
+    print("\nTRACE-X | ELA COMPARISON")
+    print("-" * 40)
+
+    for quality in [95, 90, 70]:
+
+        output_path = root / "results" / f"ela_{quality}.png"
+
+        result = analyze_ela(
+            input_path,
+            output_path,
+            quality=quality,
+            scale=10
+        )
+
+        print(f"\nJPEG Quality: {quality}")
+        print(f"Mean Difference: {result['mean_difference']:.4f}")
+        print(f"Maximum Difference: {result['max_difference']:.4f}")
+        print(f"Output: {result['output']}")
 if __name__ == "__main__":
     main()
