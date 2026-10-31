@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.ipynb_checkpoints/
+
+data/raw/*
+data/processed/*
+data/masks/*
+
+results/*
+!results/.gitkeep
+
+*.pth
+*.pt
+*.onnxs
