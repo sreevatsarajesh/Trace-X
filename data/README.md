@@ -1,3 +1,1 @@
-Place datasets here only after checking their terms and licenses. Keep raw datasets out of Git.
-For paired localization evaluation, create a CSV manifest with `image,mask` columns.
-Masks must align spatially with the corresponding image; manipulated pixels must be nonzero.
+Keep datasets out of Git unless redistribution is permitted. Use a CSV manifest with image,mask,split,source_id. Masks must align and manipulated pixels must be nonzero. Split by source image before augmentation.

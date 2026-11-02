@@ -1,50 +1,26 @@
-import argparse
-import csv
+import argparse,csv
 from pathlib import Path
-
-import cv2
-import numpy as np
-from PIL import Image
-
+import cv2,numpy as np
 from src.tracex.pipeline import run_trace_x
 from src.tracex.metrics import binary_metrics
 
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--output", default="results/evaluation")
-    parser.add_argument("--threshold", type=float, default=0.5)
-    args = parser.parse_args()
-
-    manifest = Path(args.manifest).resolve()
-    output = Path(args.output)
-    output.mkdir(parents=True, exist_ok=True)
-    rows = []
-
-    with manifest.open(newline="", encoding="utf-8") as f:
-        entries = list(csv.DictReader(f))
-
-    for index, item in enumerate(entries):
-        image_path = (manifest.parent / item["image"]).resolve()
-        mask_path = (manifest.parent / item["mask"]).resolve()
-        report, evidence = run_trace_x(image_path, output / f"sample_{index:04d}")
-        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-        if mask is None:
-            raise ValueError(f"Cannot read mask: {mask_path}")
-        resized = cv2.resize(evidence, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_LINEAR)
-        metrics = binary_metrics(resized, mask, threshold=args.threshold)
-        rows.append({"image": str(image_path), **metrics})
-
-    csv_path = output / "metrics.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"Evaluated {len(rows)} pairs. Results: {csv_path}")
-    for key in ("precision", "recall", "f1", "iou", "false_positive_rate"):
-        print(f"Mean {key}: {np.mean([r[key] for r in rows]):.4f}")
-
-
-if __name__ == "__main__":
-    main()
+    p=argparse.ArgumentParser(); p.add_argument("--manifest",required=True); p.add_argument("--output",default="results/evaluation")
+    p.add_argument("--threshold",type=float,default=.65); p.add_argument("--split",default=None); a=p.parse_args()
+    manifest=Path(a.manifest).resolve(); out=Path(a.output); out.mkdir(parents=True,exist_ok=True)
+    with manifest.open(newline="") as f: rows=list(csv.DictReader(f))
+    if a.split and rows and "split" in rows[0]: rows=[r for r in rows if r["split"]==a.split]
+    if not rows: raise ValueError("No rows selected")
+    result=[]
+    for i,r in enumerate(rows):
+        ip=(manifest.parent/r["image"]).resolve(); mp=(manifest.parent/r["mask"]).resolve()
+        _,evidence,_=run_trace_x(ip,out/f"sample_{i:05d}")
+        mask=cv2.imread(str(mp),cv2.IMREAD_GRAYSCALE)
+        if mask is None: raise ValueError(f"Cannot read mask {mp}")
+        pred=cv2.resize(evidence,(mask.shape[1],mask.shape[0]))
+        result.append({"image":str(ip),"source_id":r.get("source_id",""),**binary_metrics(pred,mask,a.threshold)})
+    with (out/"metrics.csv").open("w",newline="") as f:
+        w=csv.DictWriter(f,fieldnames=result[0]); w.writeheader(); w.writerows(result)
+    for k in ["precision","recall","f1","iou","false_positive_rate"]: print(f"Mean {k}: {np.mean([x[k] for x in result]):.4f}")
+    print("Saved",out/"metrics.csv")
+if __name__=="__main__":main()

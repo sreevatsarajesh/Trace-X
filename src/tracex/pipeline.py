@@ -1,112 +1,42 @@
 from pathlib import Path
-
-import cv2
+import json, cv2, numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 from PIL import Image
-
-from .fusion import adaptive_fusion
 from .signals.ela import analyze_ela
 from .signals.dct import analyze_dct
 from .signals.noise import analyze_noise
+from .signals.jpeg_grid import analyze_jpeg_grid
+from .profiler import profile_image
+from .fusion import fuse_maps
 
-
-def _load_image(path):
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError(f"Could not read image: {path}")
-    return image
-
-
-def _save_heatmap(array, path, title):
-    plt.figure(figsize=(9, 7))
-    plt.imshow(array, cmap="inferno", vmin=0, vmax=1)
-    plt.colorbar(label="Relative signal (0–1)")
-    plt.title(title)
-    plt.axis("off")
-    plt.tight_layout()
-    plt.savefig(path, dpi=160)
-    plt.close()
-
-
-def run_trace_x(image_path, output_dir, transformation="unknown",
-                ela_quality=90, ela_scale=10, noise_sigma=1.0):
-    image_path = Path(image_path)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    image = _load_image(image_path)
-    h, w = image.shape[:2]
-
-    ela_input = image_path
-    temporary_jpeg = None
-    if image_path.suffix.lower() not in {".jpg", ".jpeg"}:
-        temporary_jpeg = output_dir / "_ela_input.jpg"
-        Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)).save(
-            temporary_jpeg, "JPEG", quality=95
-        )
-        ela_input = temporary_jpeg
-
-    ela = analyze_ela(ela_input, quality=ela_quality, scale=ela_scale)
-    dct = analyze_dct(image)
-    noise = analyze_noise(image, sigma=noise_sigma)
-
-    ela_map = cv2.resize(ela["map"], (w, h), interpolation=cv2.INTER_LINEAR)
-    fused, selected_weights = adaptive_fusion(
-        ela_map, dct["map"], noise["map"], transformation=transformation
-    )
-
-    overlay = cv2.applyColorMap(
-        np.uint8(np.clip(fused, 0, 1) * 255), cv2.COLORMAP_INFERNO
-    )
-    overlay = cv2.addWeighted(image, 0.55, overlay, 0.45, 0)
-    overlay_path = output_dir / "overlay.png"
-    cv2.imwrite(str(overlay_path), overlay)
-    _save_heatmap(fused, output_dir / "evidence_map.png", "TRACE-X | Relative forensic evidence")
-
-    np.save(output_dir / "evidence_map.npy", fused)
-    report = {
-        "project": "TRACE-X",
-        "input": str(image_path),
-        "image_width": int(w),
-        "image_height": int(h),
-        "transformation_profile": transformation,
-        "signals": {
-            "ela": {
-                "mean_difference": ela["mean_difference"],
-                "max_difference": ela["max_difference"],
-                "jpeg_quality": ela_quality,
-            },
-            "dct": {
-                "mean_high_frequency_ratio": dct["mean_high_frequency_ratio"],
-                "std_high_frequency_ratio": dct["std_high_frequency_ratio"],
-                "blocks_processed": dct["blocks_processed"],
-            },
-            "noise": {
-                "mean_residual": noise["mean_residual"],
-                "std_residual": noise["std_residual"],
-                "mean_magnitude": noise["mean_magnitude"],
-                "max_magnitude": noise["max_magnitude"],
-                "sigma": noise_sigma,
-            },
-        },
-        "fusion": {
-            "method": "heuristic weighted fusion of per-image normalized maps",
-            "weights": selected_weights,
-            "mean_relative_signal": float(fused.mean()),
-            "max_relative_signal": float(fused.max()),
-            "warning": "Not a manipulation probability, calibrated confidence, or proof of tampering.",
-        },
-        "artifacts": {
-            "evidence_map": str(output_dir / "evidence_map.png"),
-            "overlay": str(overlay_path),
-            "array": str(output_dir / "evidence_map.npy"),
-        },
-    }
-    import json
-    with open(output_dir / "report.json", "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2)
-    if temporary_jpeg and temporary_jpeg.exists():
-        temporary_jpeg.unlink()
-    return report, fused
+def run_trace_x(path,out,transformation="auto",threshold=.65):
+    path,out=Path(path),Path(out); out.mkdir(parents=True,exist_ok=True)
+    image=cv2.imread(str(path))
+    if image is None: raise ValueError(f"Cannot read image: {path}")
+    h,w=image.shape[:2]; prof=profile_image(path)
+    selected=prof["profile"] if transformation=="auto" else transformation
+    ela_path=path; temp=None
+    if path.suffix.lower() not in (".jpg",".jpeg"):
+        temp=out/"_ela_temp.jpg"; Image.fromarray(cv2.cvtColor(image,cv2.COLOR_BGR2RGB)).save(temp,quality=95); ela_path=temp
+    e=analyze_ela(ela_path); d=analyze_dct(image); n=analyze_noise(image); j=analyze_jpeg_grid(image)
+    fused,disagreement,weights=fuse_maps({"ela":e["map"],"dct":d["map"],"noise":n["map"],"jpeg_grid":j["map"]},selected)
+    mask=(fused>=threshold).astype(np.uint8)*255
+    color=cv2.applyColorMap(np.uint8(np.clip(fused,0,1)*255),cv2.COLORMAP_INFERNO)
+    cv2.imwrite(str(out/"overlay.png"),cv2.addWeighted(image,.58,color,.42,0))
+    cv2.imwrite(str(out/"threshold_mask.png"),mask)
+    np.save(out/"evidence_map.npy",fused); np.save(out/"disagreement_map.npy",disagreement)
+    for name,array in [("evidence_map.png",fused),("uncertainty_proxy.png",disagreement)]:
+        plt.figure(figsize=(8,6)); plt.imshow(array,cmap="inferno"); plt.colorbar(); plt.axis("off"); plt.tight_layout(); plt.savefig(out/name,dpi=140); plt.close()
+    report={"project":"TRACE-X 2.0","input":str(path),"dimensions":[w,h],"image_profile":prof,
+      "fusion_profile":selected,"signals":{"ela_mean_difference":e["mean_difference"],
+      "dct_mean_high_frequency_ratio":d["mean_high_frequency_ratio"],
+      "noise_mean_magnitude":n["mean_magnitude"],"jpeg_grid_boundary_strength":j["mean_boundary_strength"]},
+      "fusion":{"weights":weights,"mean_relative_evidence":float(fused.mean()),"threshold":threshold,
+      "thresholded_pixel_fraction":float((mask>0).mean())},
+      "uncertainty_proxy":{"mean_disagreement":float(disagreement.mean()),"note":"Signal disagreement only; not calibrated confidence."},
+      "limitations":["Heuristic signals and weights; not a validated detector.","Evidence is not a manipulation probability or proof.","Threshold mask is exploratory, not a trained segmentation output."]}
+    (out/"report.json").write_text(json.dumps(report,indent=2))
+    if temp and temp.exists():temp.unlink()
+    return report,fused,disagreement

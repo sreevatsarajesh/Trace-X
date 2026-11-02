@@ -1,22 +1,18 @@
 # TRACE-X research protocol
 
-## Research question
-Can transformation-aware weighting of multiple forensic signals improve manipulation localization under unseen image-processing transformations compared with fixed fusion?
+Research question: can transformation-conditioned fusion improve localization robustness over fixed forensic signal fusion?
 
-## Hypothesis (to test, not assume)
-A transformation-conditioned fusion strategy may preserve useful localization evidence better than a fixed equal-weight fusion strategy under selected transformation families.
+Current signals: ELA, block-DCT high-frequency energy, Gaussian-blur residual magnitude, and an 8-pixel boundary discontinuity cue. Each can respond to benign content and processing.
 
-## Required experiments
-1. **Dataset audit:** record source IDs, manipulation types, mask availability, image dimensions, license and provenance.
-2. **Leakage-safe split:** split by original source image before creating transformed copies. Never place derivatives of one source in different splits.
-3. **Baselines:** ELA-only, DCT-only, noise-only, equal-weight fusion, heuristic profile-conditioned fusion.
-4. **Transformations:** JPEG quality levels, resize ratios, crop ratios, blur, screenshot/re-encode if available. Record exact parameters and random seeds.
-5. **Metrics:** pixel precision, recall, F1, IoU, false-positive rate, image-level metrics, calibration, runtime and memory.
-6. **Ablations:** remove each signal, vary weights, vary transformation profile accuracy, compare known versus unknown profile.
-7. **Generalization:** tune only on training/validation data; reserve source-disjoint and ideally dataset-disjoint test sets.
+The current profiler reads format and dimensions; it does not reliably infer prior transformations. The profile can be supplied manually. Weights are heuristic placeholders. Per-image percentile normalization is visualization-oriented and can distort cross-image comparisons. Disagreement is not calibrated uncertainty.
 
-## Current implementation status
-The repository implements classical signal extraction, heuristic fusion, basic transformation generation, visualization and paired-mask metric calculation. It does not yet contain a trained model, a learned transformation profiler, calibrated confidence, or validated adaptive weights.
+Required experiments:
+1. Audit dataset provenance, license, mask definitions and source IDs.
+2. Split by source image before augmentation; keep all derivatives together.
+3. Compare single-signal baselines, equal fusion and profile-conditioned fusion.
+4. Include pristine images and benign edits to measure false positives.
+5. Tune weights/thresholds on validation only; evaluate once on held-out test.
+6. Report precision, recall, F1, IoU, FPR, calibration, runtime and cross-dataset performance.
+7. Test unseen transformation chains and unknown-profile conditions.
 
-## Reporting rule
-Report measured outcomes exactly. Do not label the map as a probability or claim detection accuracy without held-out ground-truth evaluation. Include benign edits and pristine images to quantify false alarms.
+Do not claim a validated detector or publication-level improvement until controlled, source-disjoint experiments and suitable baseline comparisons support it.

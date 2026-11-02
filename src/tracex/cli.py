@@ -1,86 +1,27 @@
-import argparse
-import csv
-import json
+import argparse,csv
 from pathlib import Path
-
-import cv2
-import numpy as np
-from PIL import Image
-
 from .pipeline import run_trace_x
-from .transformations import apply_transformations, infer_transformation
-
-
-def analyze_command(args):
-    report, _ = run_trace_x(
-        args.image, args.output, transformation=args.transformation,
-        ela_quality=args.ela_quality, noise_sigma=args.noise_sigma
-    )
-    print(json.dumps(report, indent=2))
-
-
-def transform_command(args):
-    results = apply_transformations(args.image, args.output)
-    for name, path in results.items():
-        print(f"{name}: {path}")
-
-
-def robustness_command(args):
-    original = Path(args.image)
-    variants_dir = Path(args.variants)
-    output = Path(args.output)
-    output.mkdir(parents=True, exist_ok=True)
-    candidates = [("original", original)]
-    candidates.extend((p.stem, p) for p in sorted(variants_dir.glob("*")) if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
-    rows = []
-    for label, path in candidates:
-        profile = infer_transformation(label)
-        report, _ = run_trace_x(path, output / label, transformation=profile)
-        signals = report["signals"]
-        rows.append({
-            "image": label,
-            "transformation": profile,
-            "ela_mean_difference": signals["ela"]["mean_difference"],
-            "dct_mean_hf_ratio": signals["dct"]["mean_high_frequency_ratio"],
-            "noise_mean_magnitude": signals["noise"]["mean_magnitude"],
-            "fusion_mean_relative_signal": report["fusion"]["mean_relative_signal"],
-        })
-    csv_path = output / "robustness_results.csv"
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"Saved {csv_path}")
-    for row in rows:
-        print(row)
-
+from .transformations import apply_transformations,infer_transformation
 
 def main():
-    parser = argparse.ArgumentParser(prog="tracex")
-    sub = parser.add_subparsers(dest="command", required=True)
+    p=argparse.ArgumentParser(); sub=p.add_subparsers(dest="cmd",required=True)
+    a=sub.add_parser("analyze"); a.add_argument("image"); a.add_argument("--output",default="results/demo")
+    a.add_argument("--transformation",default="auto",choices=["auto","unknown","jpeg","resize","crop","screenshot"])
+    a.add_argument("--threshold",type=float,default=.65)
+    t=sub.add_parser("transform"); t.add_argument("image"); t.add_argument("--output",default="data/transformed")
+    r=sub.add_parser("robustness"); r.add_argument("image"); r.add_argument("--variants",default="data/transformed"); r.add_argument("--output",default="results/robustness")
+    args=p.parse_args()
+    if args.cmd=="analyze": print(run_trace_x(args.image,args.output,args.transformation,args.threshold)[0])
+    elif args.cmd=="transform": print(apply_transformations(args.image,args.output))
+    else:
+        out=Path(args.output); out.mkdir(parents=True,exist_ok=True); items=[("original",Path(args.image))]
+        items += [(x.stem,x) for x in sorted(Path(args.variants).glob("*")) if x.suffix.lower() in (".jpg",".jpeg",".png")]
+        rows=[]
+        for name,path in items:
+            rep,_,_=run_trace_x(path,out/name,infer_transformation(name))
+            rows.append({"image":name,"profile":rep["fusion_profile"],**rep["signals"],"mean_evidence":rep["fusion"]["mean_relative_evidence"]})
+        with (out/"robustness.csv").open("w",newline="") as f:
+            writer=csv.DictWriter(f,fieldnames=rows[0]); writer.writeheader(); writer.writerows(rows)
+        print(out/"robustness.csv")
 
-    analyze = sub.add_parser("analyze")
-    analyze.add_argument("image")
-    analyze.add_argument("--output", default="results/analysis")
-    analyze.add_argument("--transformation", default="unknown", choices=["unknown", "jpeg", "resize", "crop"])
-    analyze.add_argument("--ela-quality", type=int, default=90)
-    analyze.add_argument("--noise-sigma", type=float, default=1.0)
-    analyze.set_defaults(func=analyze_command)
-
-    transform = sub.add_parser("transform")
-    transform.add_argument("image")
-    transform.add_argument("--output", default="data/transformed")
-    transform.set_defaults(func=transform_command)
-
-    robust = sub.add_parser("robustness")
-    robust.add_argument("image")
-    robust.add_argument("--variants", default="data/transformed")
-    robust.add_argument("--output", default="results/robustness")
-    robust.set_defaults(func=robustness_command)
-
-    args = parser.parse_args()
-    args.func(args)
-
-
-if __name__ == "__main__":
-    main()
+if __name__=="__main__":main()

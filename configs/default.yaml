@@ -1,14 +1,6 @@
-ela:
-  jpeg_quality: 90
-  scale: 10
-dct:
-  block_size: 8
-  high_frequency_threshold: 6
-noise:
-  sigma: 1.0
+signals:
+  ela_quality: 90
+  noise_sigma: 1.0
 fusion:
-  weights:
-    unknown: [0.3333, 0.3333, 0.3334]
-    jpeg: [0.25, 0.25, 0.50]
-    resize: [0.30, 0.40, 0.30]
-    crop: [0.30, 0.40, 0.30]
+  unknown: [0.25, 0.25, 0.25, 0.25]
+  jpeg: [0.15, 0.20, 0.20, 0.45]
