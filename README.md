@@ -321,4 +321,3 @@ Interested in Digital Forensics, Computer Vision, Machine Learning and Cybersecu
 ---
 
 *TRACE-X 2.0 — Exploring more resilient image-forensics analysis through multi-signal evidence.*
-x
